@@ -18,7 +18,11 @@ pub fn writev<Fd: AsFd>(fd: Fd, iov: &[IoSlice<'_>]) -> Result<usize> {
     //
     // Because it is ABI compatible, a pointer cast here is valid
     let res = unsafe {
-        libc::writev(fd.as_fd().as_raw_fd(), iov.as_ptr() as *const libc::iovec, iov.len() as c_int)
+        libc::writev(
+            fd.as_fd().as_raw_fd(),
+            iov.as_ptr() as *const libc::iovec,
+            iov.len() as c_int,
+        )
     };
 
     Errno::result(res).map(|r| r as usize)
@@ -30,7 +34,11 @@ pub fn writev<Fd: AsFd>(fd: Fd, iov: &[IoSlice<'_>]) -> Result<usize> {
 pub fn readv<Fd: AsFd>(fd: Fd, iov: &mut [IoSliceMut<'_>]) -> Result<usize> {
     // SAFETY: same as in writev(), IoSliceMut is ABI-compatible with iovec
     let res = unsafe {
-        libc::readv(fd.as_fd().as_raw_fd(), iov.as_ptr() as *const libc::iovec, iov.len() as c_int)
+        libc::readv(
+            fd.as_fd().as_raw_fd(),
+            iov.as_ptr() as *const libc::iovec,
+            iov.len() as c_int,
+        )
     };
 
     Errno::result(res).map(|r| r as usize)
@@ -42,9 +50,13 @@ pub fn readv<Fd: AsFd>(fd: Fd, iov: &mut [IoSliceMut<'_>]) -> Result<usize> {
 /// or an error occurs. The file offset is not changed.
 ///
 /// See also: [`writev`](fn.writev.html) and [`pwrite`](fn.pwrite.html)
-#[cfg(not(any(target_os = "redox", target_os = "haiku")))]
+#[cfg(not(any(target_os = "redox", target_os = "haiku", target_os = "nto")))]
 #[cfg_attr(docsrs, doc(cfg(all())))]
-pub fn pwritev<Fd: AsFd>(fd: Fd, iov: &[IoSlice<'_>], offset: off_t) -> Result<usize> {
+pub fn pwritev<Fd: AsFd>(
+    fd: Fd,
+    iov: &[IoSlice<'_>],
+    offset: off_t,
+) -> Result<usize> {
     #[cfg(target_env = "uclibc")]
     let offset = offset as libc::off64_t; // uclibc doesn't use off_t
 
@@ -68,7 +80,7 @@ pub fn pwritev<Fd: AsFd>(fd: Fd, iov: &[IoSlice<'_>], offset: off_t) -> Result<u
 /// changed.
 ///
 /// See also: [`readv`](fn.readv.html) and [`pread`](fn.pread.html)
-#[cfg(not(any(target_os = "redox", target_os = "haiku")))]
+#[cfg(not(any(target_os = "redox", target_os = "haiku", target_os = "nto")))]
 #[cfg_attr(docsrs, doc(cfg(all())))]
 pub fn preadv<Fd: AsFd>(
     fd: Fd,

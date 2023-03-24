@@ -89,6 +89,7 @@ The following targets are supported by `nix`:
     <li>x86_64-unknown-netbsd</li>
    </td>
    <td>
+    <li>aarch64-unknown-nto-qnx710</li>
     <li>armv7-unknown-linux-uclibceabihf</li>
     <li>x86_64-fuchsia</li>
     <li>x86_64-unknown-dragonfly</li>
@@ -96,6 +97,7 @@ The following targets are supported by `nix`:
     <li>x86_64-unknown-linux-gnux32</li>
     <li>x86_64-unknown-openbsd</li>
     <li>x86_64-unknown-redox</li>
+    <li>x86_64-pc-nto-qnx710</li>
    </td>
   </tr>
 </table>

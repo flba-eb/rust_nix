@@ -8,7 +8,10 @@ use crate::Result;
 #[cfg(feature = "fs")]
 use crate::{fcntl::OFlag, sys::stat::Mode};
 use libc::{self, c_int, c_void, off_t, size_t};
-use std::{num::NonZeroUsize, os::unix::io::{AsRawFd, AsFd}};
+use std::{
+    num::NonZeroUsize,
+    os::unix::io::{AsFd, AsRawFd},
+};
 
 libc_bitflags! {
     /// Desired memory protection of a memory mapping.
@@ -81,8 +84,8 @@ libc_bitflags! {
         MAP_LOCKED;
         /// Do not reserve swap space for this mapping.
         ///
-        /// This was removed in FreeBSD 11 and is unused in DragonFlyBSD.
-        #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd")))]
+        /// This was removed in FreeBSD 11 and is unused in DragonFlyBSD and QNX Neutrino.
+        #[cfg(not(any(target_os = "dragonfly", target_os = "freebsd", target_os = "nto")))]
         #[cfg_attr(docsrs, doc(cfg(all())))]
         MAP_NORESERVE;
         /// Populate page tables for a mapping.
@@ -210,6 +213,7 @@ libc_bitflags! {
     }
 }
 
+#[cfg(not(target_os = "nto"))]
 libc_enum! {
     /// Usage information for a range of memory to allow for performance optimizations by the kernel.
     ///
@@ -328,6 +332,27 @@ libc_enum! {
         #[cfg_attr(docsrs, doc(cfg(all())))]
         #[allow(missing_docs)]
         MADV_CAN_REUSE,
+    }
+}
+
+#[cfg(target_os = "nto")]
+libc_enum! {
+    /// Usage information for a range of memory to allow for performance optimizations by the kernel.
+    ///
+    /// Used by [`madvise`](./fn.madvise.html).
+    #[repr(i32)]
+    #[non_exhaustive]
+    pub enum MmapAdvise {
+        /// No further special treatment. This is the default.
+        POSIX_MADV_NORMAL,
+        /// Expect random page references.
+        POSIX_MADV_RANDOM,
+        /// Expect sequential page references.
+        POSIX_MADV_SEQUENTIAL,
+        /// Expect access in the near future.
+        POSIX_MADV_WILLNEED,
+        /// Do not expect access in the near future.
+        POSIX_MADV_DONTNEED,
     }
 }
 
@@ -502,7 +527,11 @@ pub unsafe fn madvise(
     length: size_t,
     advise: MmapAdvise,
 ) -> Result<()> {
-    Errno::result(libc::madvise(addr, length, advise as i32)).map(drop)
+    #[cfg(not(target_os = "nto"))]
+    return Errno::result(libc::madvise(addr, length, advise as i32)).map(drop);
+    #[cfg(target_os = "nto")]
+    return Errno::result(libc::posix_madvise(addr, length, advise as i32))
+        .map(drop);
 }
 
 /// Set protection of memory mapping.

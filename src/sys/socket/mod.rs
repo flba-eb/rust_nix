@@ -278,7 +278,9 @@ libc_bitflags! {
                   target_os = "illumos",
                   target_os = "linux",
                   target_os = "netbsd",
-                  target_os = "openbsd"))]
+                  target_os = "openbsd",
+                  target_os = "nto",
+        ))]
         #[cfg_attr(docsrs, doc(cfg(all())))]
         SOCK_CLOEXEC;
         /// Return `EPIPE` instead of raising `SIGPIPE`
@@ -469,6 +471,46 @@ cfg_if! {
 
         impl From<libc::cmsgcred> for UnixCredentials {
             fn from(cred: libc::cmsgcred) -> Self {
+                UnixCredentials(cred)
+            }
+        }
+    } else if #[cfg(target_os = "nto")] {
+        /// Unix credentials of the sending process.
+        ///
+        /// This struct is used with the `SCM_CREDS` ancillary message for UNIX sockets.
+        #[repr(transparent)]
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub struct UnixCredentials(libc::sockcred);
+
+        impl UnixCredentials {
+            /// Returns the real user identifier
+            pub fn uid(&self) -> libc::uid_t {
+                self.0.sc_uid
+            }
+
+            /// Returns the effective user identifier
+            pub fn euid(&self) -> libc::uid_t {
+                self.0.sc_euid
+            }
+
+            /// Returns the real group identifier
+            pub fn gid(&self) -> libc::gid_t {
+                self.0.sc_gid
+            }
+
+            /// Returns the effective group identifier
+            pub fn egid(&self) -> libc::gid_t {
+                self.0.sc_egid
+            }
+
+            /// Returns a list group identifiers (the first one being the effective GID)
+            pub fn groups(&self) -> &[libc::gid_t] {
+                unsafe { slice::from_raw_parts(self.0.sc_groups.as_ptr() as *const libc::gid_t, self.0.sc_ngroups as _) }
+            }
+        }
+
+        impl From<libc::sockcred> for UnixCredentials {
+            fn from(cred: libc::sockcred) -> Self {
                 UnixCredentials(cred)
             }
         }
@@ -669,7 +711,7 @@ pub enum ControlMessageOwned {
     #[cfg_attr(docsrs, doc(cfg(all())))]
     ScmCredentials(UnixCredentials),
     /// Received version of [`ControlMessage::ScmCreds`]
-    #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+    #[cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "nto"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     ScmCreds(UnixCredentials),
     /// A message of type `SCM_TIMESTAMP`, containing the time the
@@ -747,6 +789,7 @@ pub enum ControlMessageOwned {
         target_os = "linux",
         target_os = "macos",
         target_os = "netbsd",
+        target_os = "nto",
     ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
@@ -760,6 +803,7 @@ pub enum ControlMessageOwned {
         target_os = "macos",
         target_os = "openbsd",
         target_os = "netbsd",
+        target_os = "nto",
     ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
@@ -770,6 +814,7 @@ pub enum ControlMessageOwned {
         target_os = "macos",
         target_os = "netbsd",
         target_os = "openbsd",
+        target_os = "nto",
     ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
@@ -780,6 +825,7 @@ pub enum ControlMessageOwned {
         target_os = "macos",
         target_os = "netbsd",
         target_os = "openbsd",
+        target_os = "nto",
     ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
@@ -883,6 +929,11 @@ impl ControlMessageOwned {
                 let cred: libc::cmsgcred = ptr::read_unaligned(p as *const _);
                 ControlMessageOwned::ScmCreds(cred.into())
             }
+            #[cfg(target_os = "nto")]
+            (libc::SOL_SOCKET, libc::SCM_CREDS) => {
+                let cred: libc::sockcred = ptr::read_unaligned(p as *const _);
+                ControlMessageOwned::ScmCreds(cred.into())
+            }
             #[cfg(not(target_os = "haiku"))]
             (libc::SOL_SOCKET, libc::SCM_TIMESTAMP) => {
                 let tv: libc::timeval = ptr::read_unaligned(p as *const _);
@@ -910,7 +961,8 @@ impl ControlMessageOwned {
                 target_os = "freebsd",
                 target_os = "ios",
                 target_os = "linux",
-                target_os = "macos"
+                target_os = "macos",
+                target_os = "nto",
             ))]
             #[cfg(feature = "net")]
             (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
@@ -923,6 +975,7 @@ impl ControlMessageOwned {
                 target_os = "linux",
                 target_os = "macos",
                 target_os = "netbsd",
+                target_os = "nto",
             ))]
             #[cfg(feature = "net")]
             (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
@@ -935,6 +988,7 @@ impl ControlMessageOwned {
                 target_os = "macos",
                 target_os = "netbsd",
                 target_os = "openbsd",
+                target_os = "nto",
             ))]
             #[cfg(feature = "net")]
             (libc::IPPROTO_IP, libc::IP_RECVIF) => {
@@ -947,6 +1001,7 @@ impl ControlMessageOwned {
                 target_os = "macos",
                 target_os = "netbsd",
                 target_os = "openbsd",
+                target_os = "nto",
             ))]
             #[cfg(feature = "net")]
             (libc::IPPROTO_IP, libc::IP_RECVDSTADDR) => {
@@ -1062,7 +1117,7 @@ pub enum ControlMessage<'a> {
     ///
     /// For further information, please refer to the
     /// [`unix(4)`](https://www.freebsd.org/cgi/man.cgi?query=unix) man page.
-    #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+    #[cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "nto"))]
     #[cfg_attr(docsrs, doc(cfg(all())))]
     ScmCreds,
 
@@ -1120,7 +1175,9 @@ pub enum ControlMessage<'a> {
               target_os = "macos",
               target_os = "netbsd",
               target_os = "android",
-              target_os = "ios",))]
+              target_os = "ios",
+              target_os = "nto",
+    ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
     Ipv4PacketInfo(&'a libc::in_pktinfo),
@@ -1134,7 +1191,9 @@ pub enum ControlMessage<'a> {
               target_os = "netbsd",
               target_os = "freebsd",
               target_os = "android",
-              target_os = "ios",))]
+              target_os = "ios",
+              target_os = "nto",
+    ))]
     #[cfg(feature = "net")]
     #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
     Ipv6PacketInfo(&'a libc::in6_pktinfo),
@@ -1204,7 +1263,7 @@ impl<'a> ControlMessage<'a> {
             ControlMessage::ScmCredentials(creds) => {
                 &creds.0 as *const libc::ucred as *const u8
             }
-            #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+            #[cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "nto"))]
             ControlMessage::ScmCreds => {
                 // The kernel overwrites the data, we just zero it
                 // to make sure it's not uninitialized memory
@@ -1251,12 +1310,13 @@ impl<'a> ControlMessage<'a> {
             },
             #[cfg(any(target_os = "linux", target_os = "macos",
                       target_os = "netbsd", target_os = "android",
-                      target_os = "ios",))]
+                      target_os = "ios", target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv4PacketInfo(info) => info as *const _ as *const u8,
             #[cfg(any(target_os = "linux", target_os = "macos",
                       target_os = "netbsd", target_os = "freebsd",
-                      target_os = "android", target_os = "ios",))]
+                      target_os = "android", target_os = "ios",
+                      target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6PacketInfo(info) => info as *const _ as *const u8,
             #[cfg(any(target_os = "netbsd", target_os = "freebsd",
@@ -1295,6 +1355,10 @@ impl<'a> ControlMessage<'a> {
             ControlMessage::ScmCreds => {
                 mem::size_of::<libc::cmsgcred>()
             }
+            #[cfg(target_os = "nto")]
+            ControlMessage::ScmCreds => {
+                mem::size_of::<libc::sockcred>()
+            }
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ControlMessage::AlgSetIv(iv) => {
                 mem::size_of::<&[u8]>() + iv.len()
@@ -1314,12 +1378,13 @@ impl<'a> ControlMessage<'a> {
             },
             #[cfg(any(target_os = "linux", target_os = "macos",
               target_os = "netbsd", target_os = "android",
-              target_os = "ios",))]
+              target_os = "ios", target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv4PacketInfo(info) => mem::size_of_val(info),
             #[cfg(any(target_os = "linux", target_os = "macos",
               target_os = "netbsd", target_os = "freebsd",
-              target_os = "android", target_os = "ios",))]
+              target_os = "android", target_os = "ios",
+              target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6PacketInfo(info) => mem::size_of_val(info),
             #[cfg(any(target_os = "netbsd", target_os = "freebsd",
@@ -1343,7 +1408,7 @@ impl<'a> ControlMessage<'a> {
             ControlMessage::ScmRights(_) => libc::SOL_SOCKET,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ControlMessage::ScmCredentials(_) => libc::SOL_SOCKET,
-            #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+            #[cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "nto"))]
             ControlMessage::ScmCreds => libc::SOL_SOCKET,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ControlMessage::AlgSetIv(_) | ControlMessage::AlgSetOp(_) |
@@ -1353,12 +1418,13 @@ impl<'a> ControlMessage<'a> {
             ControlMessage::UdpGsoSegments(_) => libc::SOL_UDP,
             #[cfg(any(target_os = "linux", target_os = "macos",
                       target_os = "netbsd", target_os = "android",
-                      target_os = "ios",))]
+                      target_os = "ios", target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv4PacketInfo(_) => libc::IPPROTO_IP,
             #[cfg(any(target_os = "linux", target_os = "macos",
               target_os = "netbsd", target_os = "freebsd",
-              target_os = "android", target_os = "ios",))]
+              target_os = "android", target_os = "ios",
+              target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6PacketInfo(_) => libc::IPPROTO_IPV6,
             #[cfg(any(target_os = "netbsd", target_os = "freebsd",
@@ -1378,7 +1444,7 @@ impl<'a> ControlMessage<'a> {
             ControlMessage::ScmRights(_) => libc::SCM_RIGHTS,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ControlMessage::ScmCredentials(_) => libc::SCM_CREDENTIALS,
-            #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+            #[cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "nto"))]
             ControlMessage::ScmCreds => libc::SCM_CREDS,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ControlMessage::AlgSetIv(_) => {
@@ -1399,12 +1465,13 @@ impl<'a> ControlMessage<'a> {
             },
             #[cfg(any(target_os = "linux", target_os = "macos",
                       target_os = "netbsd", target_os = "android",
-                      target_os = "ios",))]
+                      target_os = "ios", target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv4PacketInfo(_) => libc::IP_PKTINFO,
             #[cfg(any(target_os = "linux", target_os = "macos",
                       target_os = "netbsd", target_os = "freebsd",
-                      target_os = "android", target_os = "ios",))]
+                      target_os = "android", target_os = "ios",
+                      target_os = "nto",))]
             #[cfg(feature = "net")]
             ControlMessage::Ipv6PacketInfo(_) => libc::IPV6_PKTINFO,
             #[cfg(any(target_os = "netbsd", target_os = "freebsd",
@@ -1580,6 +1647,7 @@ pub fn sendmmsg<'a, XS, AS, C, I, S>(
     target_os = "android",
     target_os = "freebsd",
     target_os = "netbsd",
+    target_os = "nto",
 ))]
 #[derive(Debug)]
 /// Preallocated structures needed for [`recvmmsg`] and [`sendmmsg`] functions
@@ -1598,6 +1666,7 @@ pub struct MultiHeaders<S> {
     target_os = "android",
     target_os = "freebsd",
     target_os = "netbsd",
+    target_os = "nto",
 ))]
 impl<S> MultiHeaders<S> {
     /// Preallocate structure used by [`recvmmsg`] and [`sendmmsg`] takes number of headers to preallocate
@@ -1719,6 +1788,7 @@ where
     target_os = "android",
     target_os = "freebsd",
     target_os = "netbsd",
+    target_os = "nto",
 ))]
 #[derive(Debug)]
 /// Iterator over results of [`recvmmsg`]/[`sendmmsg`]
@@ -1736,6 +1806,7 @@ pub struct MultiResults<'a, S> {
     target_os = "android",
     target_os = "freebsd",
     target_os = "netbsd",
+    target_os = "nto",
 ))]
 impl<'a, S> Iterator for MultiResults<'a, S>
 where
